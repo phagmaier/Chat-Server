@@ -58,20 +58,20 @@ void Session::parse_header() {
   std::istream is(&header_buf_);
   std::string header_content;
   std::getline(is, header_content, '\0');
-  if (header_content == "LOGIN") {
+  if (header_content == "login") {
     read_login();
-  } else if (header_content == "REGISTER") {
+  } else if (header_content == "register") {
     read_register();
-  } else if (header_content == "LEAVE") {
-    std::cerr << "LEAVING CHAT ROOM. IDK HOW TO HAND YET\n";
+  } else if (header_content == "menu") {
+    read_menu();
+  } else if (header_content == "leave") {
+    std::cerr << "leaving chat room. idk how to hand yet\n";
   } else if (header_content == "DM") {
-    std::cerr << "HAVEN'T IMPLIMENTED DM YET\n";
+    std::cerr << "haven't implimented dm yet\n";
   } else {
-    std::cerr << "ERROR NO MATCHING HEADER\n";
+    std::cerr << "error no matching header\n";
   }
 }
-
-void Session::send_response(const char *str) {}
 
 void Session::parse_login() {
   std::istream is(&header_buf_);
@@ -147,8 +147,11 @@ void Session::write_response() {
                               return;
                             }
                             self->out_queue_.pop_front();
-                            if (!self->out_queue_.empty())
+                            if (!self->out_queue_.empty()) {
                               self->write_response();
+                            } else {
+                              self->read_header();
+                            }
                           }));
 }
 

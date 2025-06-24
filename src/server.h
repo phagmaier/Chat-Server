@@ -21,6 +21,11 @@ public:
   Session(tcp::socket sock, ROOMS &rooms);
   void start();
 
+  // for parsing they should actually
+  // always send the whole message all at once
+  // and you'll just seperate it by newline
+  // so it'll be the header newline then you parse
+  // accordingly
 private:
   void read_header();
   void read_login();
@@ -28,8 +33,9 @@ private:
   void parse_header();
   void parse_login();
   void parse_register();
-  void send_response(const char *str);
   void write_response();
+  void read_menu();
+  void read_mmsg();
 
   tcp::socket socket_;
   asio::strand<asio::any_io_executor> strand_;

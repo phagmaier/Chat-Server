@@ -1,0 +1,2 @@
+So for writing chat history get the number given and then append a newline
+(just to make it easier to parse)

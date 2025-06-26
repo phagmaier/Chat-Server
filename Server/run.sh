@@ -1,8 +1,8 @@
 #!/bin/bash
 
-mkdir -p bin || exit 1
-cd bin || exit 1
+mkdir -p build || exit 1
+cd build || exit 1
 
 cmake ..
 make
-./runme
+./server

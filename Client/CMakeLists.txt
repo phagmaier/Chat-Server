@@ -16,8 +16,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 # Specify the source files
 set(SOURCES
     ../src/main.cpp
-    ../src/server.cpp
-    ../src/db.cpp
+    ../src/client.cpp
 )
 
 # Find Boost libraries

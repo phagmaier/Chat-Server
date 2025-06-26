@@ -24,7 +24,7 @@ struct Db {
   bool verifyLogin(const char *username, const char *password);
 
   std::vector<std::string> get_rooms();
-  std::vector<std::string> get_logs(int lim, int roomId);
+  std::string get_logs(int lim, std::string &roomName);
   bool isUnique(const char *username) const;
 
   sqlite3 *db = nullptr;

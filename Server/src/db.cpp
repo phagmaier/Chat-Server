@@ -16,23 +16,20 @@ std::vector<std::string> Db::get_rooms() {
   sqlite3_stmt *stmt;
   std::vector<std::string> rooms;
 
-  // Prepare the SQL statement
   if (sqlite3_prepare_v2(db, "SELECT name FROM rooms", -1, &stmt, nullptr) !=
       SQLITE_OK) {
     throw std::runtime_error("Failed to prepare statement: " +
                              std::string(sqlite3_errmsg(db)));
   }
 
-  // Execute the statement and retrieve results
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const char *room =
         reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
-    if (room) {                 // Check if room is not null
-      rooms.emplace_back(room); // Use emplace_back for efficiency
+    if (room) {
+      rooms.emplace_back(room);
     }
   }
 
-  // Finalize the statement to release resources
   sqlite3_finalize(stmt);
   return rooms;
 }
@@ -170,15 +167,14 @@ bool Db::isUnique(const char *username) const {
 
   int rc = sqlite3_step(stmt);
   bool ok = (rc == SQLITE_DONE); // no row → unique
-  // SQLITE_ROW means a matching username exists
-  // anything else is an error ⇒ treat as duplicate to be safe
 
   sqlite3_finalize(stmt);
   return ok;
 }
 
-std::vector<std::string> Db::get_logs(int lim, int roomId) {
-  std::vector<std::string> chats;
+std::string Db::get_logs(int lim, std::string &roomName) {
+  int roomId = getRoomId(roomName);
+  std::string chats = "";
   chats.reserve(lim);
 
   sqlite3_stmt *stmt;
@@ -194,10 +190,8 @@ std::vector<std::string> Db::get_logs(int lim, int roomId) {
                      "ORDER BY ts ASC;",
                      -1, &stmt, nullptr);
 
-  // Bind room ID
   sqlite3_bind_int(stmt, 1, roomId);
 
-  // Bind message count
   sqlite3_bind_int(stmt, 2, lim);
 
   std::string txt;
@@ -206,9 +200,8 @@ std::vector<std::string> Db::get_logs(int lim, int roomId) {
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     name = (const char *)sqlite3_column_text(stmt, 0);
     txt = (const char *)sqlite3_column_text(stmt, 1);
-    // const char *ts = (const char *)sqlite3_column_text(stmt, 2);
-    full = "[" + name + "]: " + txt;
-    chats.push_back(full);
+    full = "[" + name + "]: " + txt + "\n";
+    chats += full;
   }
   sqlite3_finalize(stmt);
   return chats;

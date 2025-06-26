@@ -5,4 +5,4 @@ cd bin || exit 1
 
 cmake ..
 make
-./runme
+./client

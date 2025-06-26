@@ -1,36 +1,26 @@
 #include "server.h"
 
 //----------------------------------------------------------------------
-// ChatRoom Implementation
+// ChatRoom
 //----------------------------------------------------------------------
-
 void ChatRoom::join(ParticipantPtr participant) {
-  // Lock the mutex to safely modify the participants set
   std::lock_guard<std::mutex> lock(mutex_);
   participants_.insert(participant);
-  // Optional: broadcast a "user has joined" message
 }
 
 void ChatRoom::leave(ParticipantPtr participant) {
-  // Lock the mutex to safely modify the participants set
   std::lock_guard<std::mutex> lock(mutex_);
   participants_.erase(participant);
-  // Optional: broadcast a "user has left" message
 }
 
-// This is the core broadcast function. It runs on the calling session's strand,
-// but the `deliver` calls will post work to each individual recipient's strand.
 void ChatRoom::broadcast(const std::string &msg, ParticipantPtr sender) {
   std::vector<ParticipantPtr> recipients;
   {
-    // Lock the mutex to safely copy the list of participants
     std::lock_guard<std::mutex> lock(mutex_);
     recipients.assign(participants_.begin(), participants_.end());
   }
 
-  // Deliver the message to each participant.
   for (auto &participant : recipients) {
-    // You might want to avoid sending the message back to the original sender
     if (participant != sender) {
       participant->deliver(msg);
     }
@@ -38,20 +28,15 @@ void ChatRoom::broadcast(const std::string &msg, ParticipantPtr sender) {
 }
 
 //----------------------------------------------------------------------
-// Session Implementation
+// Session
 //----------------------------------------------------------------------
-
 Session::Session(tcp::socket socket, RoomMap &rooms)
     : socket_(std::move(socket)), strand_(socket_.get_executor()),
-      rooms_(rooms),
-      db_(Db("../Db/chat.db")) // Ensure your Db class is safe to be
-                               // instantiated multiple times or is a singleton
-{
+      rooms_(rooms), db_(Db("../Db/chat.db")) {
   std::cout << "Session created.\n";
 }
 
 Session::~Session() {
-  // When the session is destroyed, leave the room.
   if (current_room_) {
     current_room_->leave(shared_from_this());
   }
@@ -60,13 +45,10 @@ Session::~Session() {
 
 void Session::start() { read_header(); }
 
-// This method is called by the ChatRoom to deliver a message to this specific
-// client.
 void Session::deliver(const std::string &msg) {
-  // Post the work to the session's strand to ensure thread safety.
   asio::post(strand_, [self = shared_from_this(), msg] {
     bool write_in_progress = !self->out_queue_.empty();
-    self->out_queue_.push_back(msg + "\n"); // Add newline for client parsing
+    self->out_queue_.push_back(msg + "\n");
     if (!write_in_progress) {
       self->do_write();
     }
@@ -83,7 +65,6 @@ void Session::read_header() {
               self->parse_header();
             } else {
               std::cerr << "read_header error: " << ec.message() << std::endl;
-              // Session will be destroyed, automatically leaving the room.
             }
           }));
 }
@@ -131,9 +112,12 @@ void Session::parse_message(std::istream &is) {
       deliver("ERROR\r\n");
       return;
     }
-    std::string full_msg = "[" + username_ + "]: " + msg + "\n";
-    current_room_->broadcast(full_msg, shared_from_this());
-    return;
+    std::string full_msg = "[" + username_ + "]: " + msg;
+    if (db_.insertMessage(current_room_->get_name(), username_, full_msg)) {
+      current_room_->broadcast(full_msg, shared_from_this());
+      deliver("TRUE\r\n");
+      return;
+    }
   }
   deliver("ERROR\r\n");
 }
@@ -152,6 +136,21 @@ void Session::parse_menu(std::istream &is) {
     return;
   }
   deliver("FALSE\r\n");
+}
+
+// client must send the limit as a string
+void Session::parse_logs(std::istream &is) {
+  std::string lim;
+  if (!std::getline(is, lim, '\r')) {
+    deliver("FALSE\n\r");
+    return;
+  }
+  std::string room_name = current_room_->get_name();
+  std::string results = db_.get_logs(std::stoi(lim), room_name);
+  // will always have at least \r\n
+  std::string full = "OK\n";
+  full += results;
+  deliver(full);
 }
 
 void Session::parse_header() {
@@ -176,6 +175,8 @@ void Session::parse_header() {
     parse_message(is);
   } else if (command == "REGISTER") {
     parse_register(is);
+  } else if (command == "LOGS") {
+    parse_logs(is);
   } else {
     deliver("ERROR unknown_command\n");
   }
@@ -203,7 +204,6 @@ void Session::do_write() {
 //----------------------------------------------------------------------
 // Server Implementation
 //----------------------------------------------------------------------
-
 Server::Server(asio::io_context &io_context, uint16_t port)
     : acceptor_(io_context, tcp::endpoint(tcp::v4(), port)) {
   load_rooms();
@@ -228,7 +228,6 @@ void Server::do_accept() {
         } else {
           std::cerr << "Accept error: " << ec.message() << std::endl;
         }
-        // Always continue accepting new connections
         do_accept();
       });
 }

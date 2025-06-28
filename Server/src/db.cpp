@@ -12,9 +12,9 @@ Db::~Db() {
     sqlite3_close(db);
 }
 
-std::vector<std::string> Db::get_rooms() {
+std::string Db::get_rooms() {
   sqlite3_stmt *stmt;
-  std::vector<std::string> rooms;
+  std::string rooms = "";
 
   if (sqlite3_prepare_v2(db, "SELECT name FROM rooms", -1, &stmt, nullptr) !=
       SQLITE_OK) {
@@ -26,7 +26,9 @@ std::vector<std::string> Db::get_rooms() {
     const char *room =
         reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
     if (room) {
-      rooms.emplace_back(room);
+      // rooms.emplace_back(room);
+      rooms += room;
+      rooms += "\n";
     }
   }
 

@@ -21,7 +21,7 @@ using RoomMap = std::unordered_map<std::string, std::shared_ptr<ChatRoom>>;
 class Participant {
 public:
   virtual ~Participant() {}
-  virtual void deliver(const std::string &msg) = 0;
+  virtual void deliver(const std::string msg) = 0;
 };
 
 using ParticipantPtr = std::shared_ptr<Participant>;
@@ -51,7 +51,7 @@ public:
   ~Session();
 
   void start();
-  void deliver(const std::string &msg) override;
+  void deliver(const std::string msg) override;
 
 private:
   void read_header();

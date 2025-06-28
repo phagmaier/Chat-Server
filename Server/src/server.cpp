@@ -1,8 +1,5 @@
 #include "server.h"
 
-//----------------------------------------------------------------------
-// ChatRoom
-//----------------------------------------------------------------------
 void ChatRoom::join(ParticipantPtr participant) {
   std::lock_guard<std::mutex> lock(mutex_);
   participants_.insert(participant);
@@ -27,9 +24,6 @@ void ChatRoom::broadcast(const std::string &msg, ParticipantPtr sender) {
   }
 }
 
-//----------------------------------------------------------------------
-// Session
-//----------------------------------------------------------------------
 Session::Session(tcp::socket socket, RoomMap &rooms)
     : socket_(std::move(socket)), strand_(socket_.get_executor()),
       rooms_(rooms), db_(Db("../Db/chat.db")) {
@@ -45,7 +39,7 @@ Session::~Session() {
 
 void Session::start() { read_header(); }
 
-void Session::deliver(const std::string &msg) {
+void Session::deliver(const std::string msg) {
   asio::post(strand_, [self = shared_from_this(), msg] {
     bool write_in_progress = !self->out_queue_.empty();
     self->out_queue_.push_back(msg + "\n");
@@ -72,58 +66,84 @@ void Session::read_header() {
 void Session::parse_login(std::istream &is) {
   std::string username;
   std::string password;
+  std::string id;
+  if (!std::getline(is, id, '\n')) {
+    deliver("ERROR\r\n");
+    return;
+  }
   if (!std::getline(is, username, '\n')) {
     deliver("ERROR\r\n");
     return;
   }
-  if (!std::getline(is, password, '\n')) {
+  if (!std::getline(is, password, '\r')) {
     deliver("ERROR\r\n");
     return;
   }
   if (db_.verifyLogin(username.c_str(), password.c_str())) {
     this->username_ = username;
-    deliver("TRUE\r\n");
+    id += "\nTRUE\r\n";
+    deliver(id);
     return;
   }
-  deliver("FALSE\r\n");
+  id += "\nFALSE\r\n";
+  deliver(id);
 }
 void Session::parse_register(std::istream &is) {
   std::string username;
   std::string password;
+  std::string id;
+  if (!std::getline(is, id, '\n')) {
+    deliver("ERROR\r\n");
+    return;
+  }
   if (!std::getline(is, username, '\n')) {
     deliver("ERROR\r\n");
     return;
   }
-  if (!std::getline(is, password, '\n')) {
+  if (!std::getline(is, password, '\r')) {
     deliver("ERROR\r\n");
     return;
   }
   if (password.size() && db_.isUnique(username.c_str())) {
     this->username_ = username;
-    deliver("TRUE\r\n");
+    id += "\nTRUE\r\n";
+    deliver(id);
     return;
   }
-  deliver("FALSE\r\n");
+  id += "\nFALSE\r\n";
+  deliver(id);
 }
 void Session::parse_message(std::istream &is) {
-  if (!username_.empty()) {
-    std::string msg;
-    if (!std::getline(is, msg, '\r')) {
-      deliver("ERROR\r\n");
-      return;
-    }
-    std::string full_msg = "[" + username_ + "]: " + msg;
-    if (db_.insertMessage(current_room_->get_name(), username_, full_msg)) {
-      current_room_->broadcast(full_msg, shared_from_this());
-      deliver("TRUE\r\n");
-      return;
-    }
+  if (username_.empty()) {
+    deliver("ERROR\r\n");
+  }
+  std::string msg;
+  std::string id;
+  if (!std::getline(is, id, '\n')) {
+    deliver("ERROR\r\n");
+    return;
+  }
+  if (!std::getline(is, msg, '\r')) {
+    deliver("ERROR\r\n");
+    return;
+  }
+  std::string full_msg = "[" + username_ + "]: " + msg;
+  if (db_.insertMessage(current_room_->get_name(), username_, full_msg)) {
+    current_room_->broadcast(full_msg, shared_from_this());
+    id += "\nTRUE\r\n";
+    deliver(id);
+    return;
   }
   deliver("ERROR\r\n");
 }
 
 void Session::parse_menu(std::istream &is) {
   std::string board;
+  std::string id;
+  if (!std::getline(is, id, '\n')) {
+    deliver("ERROR\r\n");
+    return;
+  }
   if (!std::getline(is, board, '\r')) {
     deliver("ERROR\r\n");
     return;
@@ -132,25 +152,31 @@ void Session::parse_menu(std::istream &is) {
   if (it != rooms_.end()) {
     current_room_ = it->second;
     current_room_->join(shared_from_this());
-    deliver("TRUE\r\n");
+    id += "\nTRUE\r\n";
+    deliver(id);
     return;
   }
-  deliver("FALSE\r\n");
+  id += "\nFALSE\r\n";
+  deliver(id);
 }
 
 // client must send the limit as a string
 void Session::parse_logs(std::istream &is) {
   std::string lim;
+  std::string id;
+  if (!std::getline(is, id, '\n')) {
+    deliver("ERROR\n\r");
+    return;
+  }
   if (!std::getline(is, lim, '\r')) {
-    deliver("FALSE\n\r");
+    deliver("ERROR\n\r");
     return;
   }
   std::string room_name = current_room_->get_name();
   std::string results = db_.get_logs(std::stoi(lim), room_name);
   // will always have at least \r\n
-  std::string full = "OK\n";
-  full += results;
-  deliver(full);
+  id += "\n" + results + "\r\n";
+  deliver(id);
 }
 
 void Session::parse_header() {
@@ -213,10 +239,16 @@ Server::Server(asio::io_context &io_context, uint16_t port)
 
 void Server::load_rooms() {
   Db db("../Db/chat.db");
-  std::vector<std::string> room_names = db.get_rooms();
-  for (const std::string &name : room_names) {
-    rooms_[name] = std::make_shared<ChatRoom>(name);
-    std::cout << "Loaded room: " << name << std::endl;
+  std::string room_names = db.get_rooms();
+  std::string tmp = "";
+  for (int i = 0; i < room_names.size(); ++i) {
+    if (room_names[i] == '\n') {
+      std::cout << "Loaded room: " << tmp << std::endl;
+      rooms_[tmp] = std::make_shared<ChatRoom>(tmp);
+      tmp.clear();
+    } else {
+      tmp += room_names[i];
+    }
   }
 }
 

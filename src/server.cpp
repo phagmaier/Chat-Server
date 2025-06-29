@@ -1,4 +1,5 @@
 #include "server.h"
+#include <string>
 
 void ChatRoom::join(ParticipantPtr participant) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -42,7 +43,7 @@ void Session::start() { read_header(); }
 void Session::deliver(const std::string msg) {
   asio::post(strand_, [self = shared_from_this(), msg] {
     bool write_in_progress = !self->out_queue_.empty();
-    self->out_queue_.push_back(msg + "\n");
+    self->out_queue_.push_back(msg);
     if (!write_in_progress) {
       self->do_write();
     }
@@ -113,6 +114,7 @@ void Session::parse_register(std::istream &is) {
   id += "\nFALSE\r\n";
   deliver(id);
 }
+
 void Session::parse_message(std::istream &is) {
   if (username_.empty()) {
     deliver("ERROR\r\n");
@@ -127,7 +129,7 @@ void Session::parse_message(std::istream &is) {
     deliver("ERROR\r\n");
     return;
   }
-  std::string full_msg = "[" + username_ + "]: " + msg;
+  std::string full_msg = "[" + username_ + "]: " + msg + "\r\n";
   if (db_.insertMessage(current_room_->get_name(), username_, full_msg)) {
     current_room_->broadcast(full_msg, shared_from_this());
     id += "\nTRUE\r\n";
@@ -152,7 +154,10 @@ void Session::parse_menu(std::istream &is) {
   if (it != rooms_.end()) {
     current_room_ = it->second;
     current_room_->join(shared_from_this());
-    id += "\nTRUE\r\n";
+    std::string room_id = std::to_string(db_.getRoomId(board));
+
+    id += "\n";
+    id += room_id + "\r\n";
     deliver(id);
     return;
   }
@@ -165,11 +170,11 @@ void Session::parse_logs(std::istream &is) {
   std::string lim;
   std::string id;
   if (!std::getline(is, id, '\n')) {
-    deliver("ERROR\n\r");
+    deliver("ERROR\r\n");
     return;
   }
   if (!std::getline(is, lim, '\r')) {
-    deliver("ERROR\n\r");
+    deliver("ERROR\r\n");
     return;
   }
   std::string room_name = current_room_->get_name();
@@ -195,15 +200,14 @@ void Session::parse_header() {
     parse_login(is);
   } else if (command == "MENU") {
     parse_menu(is);
-  }
-
-  else if (command == "MSG") {
+  } else if (command == "MSG") {
     parse_message(is);
   } else if (command == "REGISTER") {
     parse_register(is);
   } else if (command == "LOGS") {
     parse_logs(is);
   } else {
+    std::cerr << "UNKOWN COMMAND: " << command << "\n";
     deliver("ERROR unknown_command\n");
   }
   read_header();

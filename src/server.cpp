@@ -184,6 +184,13 @@ void Session::parse_logs(std::istream &is) {
   deliver(id);
 }
 
+// room id will be 0
+void Session::parse_rooms() {
+  std::string rooms = "0\n";
+  rooms += db_.get_rooms();
+  deliver(rooms);
+}
+
 void Session::parse_header() {
   std::istream is(&buffer_);
 
@@ -206,6 +213,8 @@ void Session::parse_header() {
     parse_register(is);
   } else if (command == "LOGS") {
     parse_logs(is);
+  } else if (command == "ROOMS") {
+    parse_rooms();
   } else {
     std::cerr << "UNKOWN COMMAND: " << command << "\n";
     deliver("ERROR unknown_command\n");

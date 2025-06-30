@@ -61,6 +61,7 @@ private:
   void parse_message(std::istream &is);
   void parse_menu(std::istream &is);
   void parse_logs(std::istream &is);
+  void parse_rooms();
   void do_write();
 
   tcp::socket socket_;
